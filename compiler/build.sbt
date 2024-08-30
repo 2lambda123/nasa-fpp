@@ -10,7 +10,7 @@ lazy val settings = Seq(
     "-unchecked",
     "-Xfatal-warnings"
   ),
-  libraryDependencies ++= dependencies, 
+  libraryDependencies ++= dependencies,
   Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oNCXELOPQRM"),
 )
 
@@ -89,4 +89,3 @@ lazy val fpp_to_xml = (project in file("tools/fpp-to-xml"))
   .settings(settings)
   .dependsOn(lib)
   .enablePlugins(AssemblyPlugin)
-
