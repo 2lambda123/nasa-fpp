@@ -1,0 +1,12 @@
+tests="
+action
+guard
+junction
+nested_junction
+nested_state
+ok
+signal
+state
+state_junction
+state_shadow_ok
+"

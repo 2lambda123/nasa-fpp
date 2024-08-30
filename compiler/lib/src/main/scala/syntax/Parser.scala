@@ -64,6 +64,12 @@ object Parser extends Parsers {
     (typeToken ~>! ident) ^^ { case id => Ast.DefAbsType(id) }
   }
 
+  def defAction: Parser[Ast.DefAction] = {
+    (action ~> ident) ~! opt(colon ~>! node(typeName)) ^^ {
+      case ident ~ typeName => Ast.DefAction(ident, typeName)
+    }
+  }
+
   def defArray: Parser[Ast.DefArray] = {
     (array ~>! ident <~! equals) ~!
     index ~! node(typeName) ~!
@@ -134,6 +140,20 @@ object Parser extends Parsers {
     }
   }
 
+  def defGuard: Parser[Ast.DefGuard] = {
+    (guard ~> ident) ~! opt(colon ~>! node(typeName)) ^^ {
+      case ident ~ typeName => Ast.DefGuard(ident, typeName)
+    }
+  }
+
+  def defJunction: Parser[Ast.DefJunction] = {
+    (junction ~> ident) ~! (lbrace ~> ifToken ~> node(ident)) ~! node(transitionExpr) ~!
+      (elseToken ~> node(transitionExpr)) <~! rbrace ^^ {
+      case ident ~ guard ~ ifTransition ~ elseTransition =>
+        Ast.DefJunction(ident, guard, ifTransition, elseTransition)
+    }
+  }
+
   def defModule: Parser[Ast.DefModule] = {
     (module ~>! ident) ~! (lbrace ~>! moduleMembers <~! rbrace) ^^ {
       case name ~ members => Ast.DefModule(name, members)
@@ -146,9 +166,21 @@ object Parser extends Parsers {
     }
   }
 
+  def defSignal: Parser[Ast.DefSignal] = {
+    (signal ~> ident) ~! opt(colon ~>! node(typeName)) ^^ {
+      case ident ~ typeName => Ast.DefSignal(ident, typeName)
+    }
+  }
+
+  def defState: Parser[Ast.DefState] = {
+    state ~> ident ~! opt(lbrace ~>! stateMembers <~! rbrace) ^^ {
+      case ident ~ members => Ast.DefState(ident, members.getOrElse(Nil))
+    }
+  }
+
   def defStateMachine: Parser[Ast.DefStateMachine] = {
-    (state ~> (machine ~> ident)) ^^ {
-      case name => Ast.DefStateMachine(name)
+    state ~> (machine ~> ident) ~! opt(lbrace ~>! stateMachineMembers <~! rbrace) ^^ {
+      case name ~ members => Ast.DefStateMachine(name, members)
     }
   }
 
@@ -164,6 +196,11 @@ object Parser extends Parsers {
     (topology ~>! ident) ~! (lbrace ~>! topologyMembers <~! rbrace) ^^ {
       case name ~ members => Ast.DefTopology(name, members)
     }
+  }
+
+  def doExpr: Parser[List[AstNode[Ast.Ident]]] = {
+    def elts = elementSequence(node(ident), comma)
+    doToken ~>! lbrace ~>! elts <~! rbrace ^^ { case elts => elts }
   }
 
   def exprNode: Parser[AstNode[Ast.Expr]] = {
@@ -376,18 +413,6 @@ object Parser extends Parsers {
     }
   }
 
-  def specContainer: Parser[Ast.SpecContainer] = {
-    ((product ~ container) ~>! ident) ~!
-    opt(id ~>! exprNode) ~!
-    opt((default ~ priority) ~>! exprNode) ^^ {
-      case name ~ id ~ defaultPriority => Ast.SpecContainer(
-        name,
-        id,
-        defaultPriority
-      )
-    }
-  }
-
   def specCompInstance: Parser[Ast.SpecCompInstance] = {
     visibility ~ (instance ~>! node(qualIdent)) ^^ {
       case visibility ~ instance => Ast.SpecCompInstance(visibility, instance)
@@ -427,6 +452,18 @@ object Parser extends Parsers {
     directGraph | patternGraph | failure("connection graph expected")
   }
 
+  def specContainer: Parser[Ast.SpecContainer] = {
+    ((product ~ container) ~>! ident) ~!
+    opt(id ~>! exprNode) ~!
+    opt((default ~ priority) ~>! exprNode) ^^ {
+      case name ~ id ~ defaultPriority => Ast.SpecContainer(
+        name,
+        id,
+        defaultPriority
+      )
+    }
+  }
+
   def specEvent: Parser[Ast.SpecEvent] = {
     def severityLevel = {
       activity ~ high ^^ { case _ => Ast.SpecEvent.ActivityHigh } |
@@ -454,6 +491,24 @@ object Parser extends Parsers {
   def specInit: Parser[Ast.SpecInit] = {
     (phase ~>! exprNode) ~! literalString ^^ {
       case phase ~ code => Ast.SpecInit(phase, code)
+    }
+  }
+
+  def specInitialTransition: Parser[Ast.SpecInitialTransition] = {
+    initial ~> transitionExpr ^^ {
+      case transition => Ast.SpecInitialTransition(transition)
+    }
+  }
+
+  def specEntry: Parser[Ast.SpecEntry] = {
+    entry ~> doExpr ^^ {
+      case actions => Ast.SpecEntry(actions)
+    }
+  }
+
+  def specExit: Parser[Ast.SpecExit] = {
+    exit ~> doExpr ^^ {
+      case actions => Ast.SpecExit(actions)
     }
   }
 
@@ -628,6 +683,39 @@ object Parser extends Parsers {
   def specTopImport: Parser[Ast.SpecTopImport] =
     importToken ~>! node(qualIdent) ^^ { case top => Ast.SpecTopImport(top) }
 
+  def specStateTransition: Parser[Ast.SpecStateTransition] = {
+    (on ~> node(ident)) ~! opt(ifToken ~> node(ident)) ~ transitionOrDo ^^ {
+      case signal ~ guard ~ transitionOrDo =>
+        Ast.SpecStateTransition(signal, guard, transitionOrDo)
+    }
+  }
+
+  def stateMachineMemberNode: Parser[Ast.StateMachineMember.Node] = {
+    node(specInitialTransition) ^^ { case n => Ast.StateMachineMember.SpecInitialTransition(n) } |
+    node(defState) ^^ { case n => Ast.StateMachineMember.DefState(n) } |
+    node(defSignal) ^^ { case n => Ast.StateMachineMember.DefSignal(n) } |
+    node(defAction) ^^ { case n => Ast.StateMachineMember.DefAction(n) } |
+    node(defGuard) ^^ { case n => Ast.StateMachineMember.DefGuard(n) } |
+    node(defJunction) ^^ { case n => Ast.StateMachineMember.DefJunction(n) } |
+    failure("state machine member expected")
+  }
+
+  def stateMachineMembers: Parser[List[Ast.StateMachineMember]] =
+    annotatedElementSequence(stateMachineMemberNode, semi, Ast.StateMachineMember(_))
+
+  def stateMemberNode: Parser[Ast.StateMember.Node] = {
+    node(defJunction) ^^ { case n => Ast.StateMember.DefJunction(n) } |
+    node(defState) ^^ { case n => Ast.StateMember.DefState(n) } |
+    node(specEntry) ^^ { case n => Ast.StateMember.SpecEntry(n) } |
+    node(specExit) ^^ { case n => Ast.StateMember.SpecExit(n) } |
+    node(specInitialTransition) ^^ { case n => Ast.StateMember.SpecInitialTransition(n) } |
+    node(specStateTransition) ^^ { case n => Ast.StateMember.SpecStateTransition(n) } |
+    failure("state member expected")
+  }
+
+  def stateMembers: Parser[List[Ast.StateMember]] =
+    annotatedElementSequence(stateMemberNode, semi, Ast.StateMember(_))
+
   def structTypeMember: Parser[Ast.StructTypeMember] = {
     ident ~! (colon ~>! opt(index)) ~! node(typeName) ~! opt(format ~>! node(literalString)) ^^ {
       case name ~ size ~ typeName ~ format => Ast.StructTypeMember(name, size, typeName, format)
@@ -647,6 +735,24 @@ object Parser extends Parsers {
 
   def transUnit: Parser[Ast.TransUnit] = {
     tuMembers ^^ { case members => Ast.TransUnit(members) }
+  }
+
+  def transitionExpr: Parser[Ast.TransitionExpr] =
+    opt(doExpr) ~ (enter ~> node(qualIdent)) ^^ {
+      case actionsOpt ~ destination => Ast.TransitionExpr(
+        actionsOpt.getOrElse(Nil),
+        destination
+      )
+    }
+
+  def transitionOrDo: Parser[Ast.TransitionOrDo] = {
+    def transitionParser: Parser[Ast.TransitionOrDo.Transition] = transitionExpr ^^ {
+      case e => Ast.TransitionOrDo.Transition(e)
+    }
+    def doParser: Parser[Ast.TransitionOrDo.Do] = doExpr ^^ {
+      case actions => Ast.TransitionOrDo.Do(actions)
+    }
+    transitionParser | doParser
   }
 
   def tuMembers = moduleMembers
@@ -696,6 +802,8 @@ object Parser extends Parsers {
   }
 
   override type Elem = Token
+
+  private def action = accept("action", { case t : Token.ACTION => t })
 
   private def active = accept("active", { case t : Token.ACTIVE => t })
 
@@ -763,7 +871,7 @@ object Parser extends Parsers {
 
   private def diagnostic = accept("diagnostic", { case t : Token.DIAGNOSTIC => t })
 
-  private def event = accept("event", { case t : Token.EVENT => t })
+  private def doToken = accept("do", { case t : Token.DO => t })
 
   private def dot = accept(".", { case t : Token.DOT => t })
 
@@ -772,11 +880,21 @@ object Parser extends Parsers {
   private def elementSequence[E,S](elt: Parser[E], sep: Parser[S]): Parser[List[E]] =
     repsep(elt, sep | eol) <~ opt(sep)
 
+  private def elseToken = accept("else", { case t : Token.ELSE => t })
+
+  private def enter = accept("enter", { case t : Token.ENTER => t })
+
+  private def entry = accept("entry", { case t : Token.ENTRY => t })
+
   private def enumeration = accept("enum", { case t : Token.ENUM => t })
 
   private def eol = accept("end of line", { case t : Token.EOL => t })
 
   private def equals = accept("=", { case t : Token.EQUALS => t })
+
+  private def event = accept("event", { case t : Token.EVENT => t })
+
+  private def exit = accept("exit", { case t : Token.EXIT => t })
 
   private def falseToken = accept("false", { case t : Token.FALSE => t })
 
@@ -789,6 +907,8 @@ object Parser extends Parsers {
   private def fppWith = accept("with", { case t : Token.WITH => t })
 
   private def get = accept("get", { case t : Token.GET => t })
+
+  private def guard = accept("guard", { case t : Token.GUARD => t })
 
   private def guarded = accept("guarded", { case t : Token.GUARDED => t })
 
@@ -803,15 +923,21 @@ object Parser extends Parsers {
   private def ident: Parser[Ast.Ident] =
     accept("identifier", { case Token.IDENTIFIER(s) => s })
 
+  private def ifToken = accept("if", { case t : Token.IF => t })
+
   private def importToken = accept("import", { case t : Token.IMPORT => t })
 
   private def include = accept("include", { case t : Token.INCLUDE => t })
+
+  private def initial = accept("initial", { case t : Token.INITIAL => t })
 
   private def input = accept("input", { case t : Token.INPUT => t })
 
   private def instance = accept("instance", { case t : Token.INSTANCE => t })
 
   private def internal = accept("internal", { case t : Token.INTERNAL => t })
+
+  private def junction = accept("junction", { case t : Token.JUNCTION => t })
 
   private def lbrace = accept("{", { case t : Token.LBRACE => t })
 
@@ -903,6 +1029,8 @@ object Parser extends Parsers {
   private def set = accept("set", { case t : Token.SET => t })
 
   private def severity = accept("severity", { case t : Token.SEVERITY => t })
+
+  private def signal = accept("signal", { case t : Token.SIGNAL => t })
 
   private def size = accept("size", { case t : Token.SIZE => t })
 

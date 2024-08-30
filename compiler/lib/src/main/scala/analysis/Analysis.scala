@@ -63,19 +63,12 @@ case class Analysis(
   topologyMap: Map[Symbol.Topology, Topology] = Map(),
   /** The topology under construction */
   topology: Option[Topology] = None,
+  /** The map from state machine symbols to state machines */
+  stateMachineMap: Map[Symbol.StateMachine, StateMachine] = Map(),
 ) {
 
   /** Gets the qualified name of a symbol */
-  def getQualifiedName(s: Symbol): Name.Qualified = {
-    def getIdentList(so: Option[Symbol], out: List[Ast.Ident]): List[Ast.Ident] =
-      so match {
-        case Some(s) =>
-          val so1 = parentSymbolMap.get(s)
-          getIdentList(so1, s.getUnqualifiedName :: out)
-        case None => out
-      }
-    Name.Qualified.fromIdentList(getIdentList(Some(s), Nil))
-  }
+  val getQualifiedName = Analysis.getQualifiedNameFromMap (parentSymbolMap)
 
   /** Gets the list of enclosing identifiers for a symbol */
   def getEnclosingNames(s: Symbol): List[Ast.Ident] =
@@ -520,4 +513,17 @@ object Analysis {
     s"($dec dec, $hex hex)"
   }
 
+  /** Gets the qualified name of a symbol from a parent-symbol map */
+  def getQualifiedNameFromMap[S <: SymbolInterface]
+    (parentSymbolMap: Map[S,S]) (s: S):
+  Name.Qualified = {
+    def getIdentList(so: Option[S], out: List[Ast.Ident]): List[Ast.Ident] =
+      so match {
+        case Some(s) =>
+          val so1 = parentSymbolMap.get(s)
+          getIdentList(so1, s.getUnqualifiedName :: out)
+        case None => out
+      }
+    Name.Qualified.fromIdentList(getIdentList(Some(s), Nil))
+  }
 }
