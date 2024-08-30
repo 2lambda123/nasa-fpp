@@ -80,4 +80,3 @@ lazy val fpp_to_xml = (project in file("tools/fpp-to-xml"))
 lazy val lib = project
   .settings(settings)
   .enablePlugins(ScalaNativePlugin)
-

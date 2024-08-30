@@ -9,7 +9,7 @@ then
   exit 1
 fi
 
-if test -n "$1" 
+if test -n "$1"
 then
   dest=$1
 else
